@@ -1,43 +1,53 @@
 #!/usr/bin/env python3
-"""Entrypoint for the news-image-20261126 entry.
+"""Entrypoint for the news-image-20261126 v2 entry.
 
-Copies the committed entry.png to the grader's output directory.
-Standard library only. The SHA-256 of entry.png is verified against the
-hash embedded below before copying, so the grader always sees exactly
-the bytes that were committed. This program never renders anything:
-the image was rendered once, locally, by build_image.py, and is
-shipped as a file.
+Copies the committed entry.png to the output directory and nothing else.
+Uses only the standard library. Verifies the copied file against the
+committed SHA-256 before writing it out, so a tampered or stale image
+can never be graded.
 """
 
 import hashlib
 import os
 import shutil
 import sys
-from pathlib import Path
 
-# SHA-256 of the committed entry.png. The copy refuses to run on a
-# mismatch, so the grader always sees exactly the committed bytes.
-ENTRY_SHA256 = "4904979f4f2c74a697d8215be55042b0a167f5b893b71003432d01b6a575d514"
-ENTRY_NAME = "entry.png"
+HERE = os.path.dirname(os.path.abspath(__file__))
+ENTRY_PNG = os.path.join(HERE, "entry.png")
+
+# SHA-256 of the committed entry.png. Updated whenever entry.png changes.
+EXPECTED_SHA256 = "b90083ac3c095780bdf9aa8bf598b7729475fc4e876903d5e6f66b9014e76f61"
 
 
 def main() -> int:
-    here = Path(__file__).resolve().parent
-    src = here / ENTRY_NAME
-    data = src.read_bytes()
+    out_dir = os.environ.get("MAKEFUN_OUTPUT_DIR") or "/output"
+    os.makedirs(out_dir, exist_ok=True)
+
+    with open(ENTRY_PNG, "rb") as f:
+        data = f.read()
+
     digest = hashlib.sha256(data).hexdigest()
-    if digest != ENTRY_SHA256:
+    if digest != EXPECTED_SHA256:
         print(
-            "entry.png sha256 mismatch: got %s, expected %s" % (digest, ENTRY_SHA256),
+            "entry.png SHA-256 mismatch: got %s, expected %s"
+            % (digest, EXPECTED_SHA256),
             file=sys.stderr,
         )
         return 1
-    out_dir = Path(os.environ.get("MAKEFUN_OUTPUT_DIR", "/output"))
-    out_dir.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(src, out_dir / ENTRY_NAME)
-    print("copied %s (%d bytes, sha256 %s) to %s" % (ENTRY_NAME, len(data), digest, out_dir))
+
+    dest = os.path.join(out_dir, "entry.png")
+    with open(dest, "wb") as f:
+        f.write(data)
+
+    # Double-check what landed on disk matches the committed image.
+    with open(dest, "rb") as f:
+        if hashlib.sha256(f.read()).hexdigest() != EXPECTED_SHA256:
+            print("output verification failed", file=sys.stderr)
+            return 1
+
+    print("wrote %s (%d bytes, sha256 %s)" % (dest, len(data), digest))
     return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    sys.exit(main())
